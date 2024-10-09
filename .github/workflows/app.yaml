@@ -1,0 +1,52 @@
+name: Create New AWS Application
+
+on:
+  workflow_dispatch:
+    inputs:
+      repo_name:
+        required: true
+        type: string
+
+jobs:
+  build:
+    runs-on: [self-hosted, my-lambda-prod]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: main
+          fetch-depth: 0
+          
+      - name: Repository Management
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: |
+          echo "Repo: ${{ github.event.inputs.repo_name }}"
+          echo "Branches: ${{ github.event.inputs.repo_branches }}"
+          echo "Readers: ${{ github.event.inputs.readers }}"
+          echo ${{ secrets.GH_PAT }} | gh auth login --with-token --hostname github.build.ge.com
+          echo "Hello, ${{ github.actor }}!"
+          actor=${{ github.actor }}
+          GenPact_SA="503286738"
+          
+          if [[ "$GenPact_SA" =~ "$actor" ]]
+          then
+            array=( architects cyber engineering operations SA-GenPact )
+          else
+            array=( architects cyber engineering operations )
+          fi
+          
+          gh repo create vernova-cloud-iac/${{ github.event.inputs.repo_name }} --template vernova-cloud-iac/application-template-aws --private --clone --include-all-branches
+          gh api "repos/vernova-cloud-iac/${{ github.event.inputs.repo_name }}/branches/dev/protection" --method PUT --input main/src/branch_protection_aws.json
+          gh api "repos/vernova-cloud-iac/${{ github.event.inputs.repo_name }}/branches/prd/protection" --method PUT --input main/src/branch_protection_aws.json
+          
+          for i in "${array[@]}"
+          do
+            echo "$i"
+            gh api \
+              --method PUT \
+              -H "Accept: application/vnd.github+json" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              /orgs/vernova-cloud-iac/teams/${i}/repos/vernova-cloud-iac/${{ github.event.inputs.repo_name }} \
+              -f "permission=push"
+          done
